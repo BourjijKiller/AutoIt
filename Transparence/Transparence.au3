@@ -7,15 +7,19 @@ HotKeySet('^{F1}', "HotKeyFunc")
 HotKeySet('^{F2}', "HotKeyFunc")
 HotKeySet('^{F3}', "HotKeyFunc")
 HotKeySet('^{F4}', "HotKeyFunc")
+HotKeySet('^{F5}', "HotKeyFunc")
+HotKeySet('^{F6}', "HotKeyFunc")
 #EndRegion
 
 ; Dictionnaire (AdresseFenetre) = {transparence, ancre}
 Global $dictionary = ObjCreate("Scripting.Dictionary")
 
-MsgBox($MB_ICONINFORMATION, "Informations", "CTRL + F1 : Augmenter la transparence " & @CRLF & _
-			"CTRL + F2 : Réduire la transparence" & @CRLF & _
+MsgBox($MB_ICONINFORMATION, "Informations", "CTRL + F1 : Augmenter la transparence progressivement" & @CRLF & _
+			"CTRL + F2 : Réduire la transparence progressivement" & @CRLF & _
 			"CTRL + F3 : Attacher / Détacher une fenêtre au premier plan" & @CRLF & _
-			"CTRL + F4 : Quitter")
+			"CTRL + F4 : Transparence au maximum" & @CRLF & _
+			"CTRL + F5 : Transparence au minimum" & @CRLF & _
+			"CTRL + F6 : Quitter")
 
 ; Boucle pour laisser tourner le programme
  While True
@@ -38,9 +42,16 @@ Func HotKeyFunc()
 		; F3 Key Pressed
         Case "^{F3}"
 			; Ancrage | Dé-ancrage de la fenêtre active
-			; TODO fonction ancrage
+			WindowFirstPlan()
 		; F4 Key Pressed
 		Case "^{F4}"
+			; TODO transparence minimum
+		; F5 Key Pressed
+		Case "^{F5}"
+			; Application de la transparence au maximum
+			TransMoins(Null, True)
+		; F6 Key Pressed
+		Case "^{F6}"
 			; Quitte le programme en appliquant les paramètres par défaut pour chaque fenêtre
 			Stop()
     EndSwitch
@@ -49,10 +60,10 @@ EndFunc
 #comments-start
 Permet d'augmenter la transparence de la fenêtre active
 #comments-end
-Func TransPlus($fenAdressParam = Null)
+Func TransPlus($fenAdressParam = Null, $transpMax = Null)
 	Local $fenAdress = $fenAdressParam
 	If($fenAdress = Null) Then
-		$fenAdress = ControlGetHandle(WinGetTitle("[ACTIVE]"), "", "")
+		$fenAdress = WinGetHandle(WinGetTitle("[ACTIVE]"))
 	EndIf
 	If(FenIsExist($dictionary, $fenAdress) == True) Then
 		$transparence = GetFenCaracteristiques($dictionary, $fenAdress, "_transparence")
@@ -61,7 +72,6 @@ Func TransPlus($fenAdressParam = Null)
 			WinSetTrans($fenAdress, '', $transparence)
 			; Mise à jour de la transparence dans le dictionnaire
 			SetFenCaracteristiques($dictionary, $fenAdress, $transparence, Null, "_transparence")
-			printDebug()
 		Else
 			MsgBox($MB_ICONWARNING + $MB_OK, "Erreur transparence > 255", "La transparence a atteint sa valeur maximum" & @CRLF & _
 			"Impossible de l'augmenter davantage.")
@@ -76,27 +86,34 @@ EndFunc
 
 #comments-start
 Permet de diminuer la transparence de la fenêtre active
+Si le paramètre $transpMin vaut True, la méthode permet de mettre directement la transparence de la fenêtre à 0 (Totalement transparente)
 #comments-end
-Func TransMoins($fenAdress = Null)
+Func TransMoins($fenAdress = Null, $transpMin = False)
     If($fenAdress == Null) Then
-		$fenAdress = ControlGetHandle(WinGetTitle("[ACTIVE]"), "", "")
+		$fenAdress = WinGetHandle(WinGetTitle("[ACTIVE]"))
 	EndIf
 	If(FenIsExist($dictionary, $fenAdress) == True) Then
 		$transparence = GetFenCaracteristiques($dictionary, $fenAdress, "_transparence")
-		If($transparence >= 10) Then
-			$transparence = $transparence - 10
+		If($transpMin == True) Then
+			$transparence = 0
 			WinSetTrans($fenAdress, '', $transparence)
 			SetFenCaracteristiques($dictionary, $fenAdress, $transparence, Null, "_transparence")
-			printDebug()
+			$transpMin = False
 		Else
-			MsgBox($MB_ICONWARNING + $MB_OK, "Erreur transparence > 255", "La transparence a atteint sa valeur maximum" & @CRLF & _
-			"Impossible de l'augmenter davantage.")
+			If($transparence >= 10) Then
+				$transparence = $transparence - 10
+				WinSetTrans($fenAdress, '', $transparence)
+				SetFenCaracteristiques($dictionary, $fenAdress, $transparence, Null, "_transparence")
+			Else
+				MsgBox($MB_ICONWARNING + $MB_OK, "Erreur transparence > 255", "La transparence a atteint sa valeur maximum" & @CRLF & _
+				"Impossible de l'augmenter davantage.")
+			EndIf
 		EndIf
 	Else
 		; Ajout de la fenêtre dans le dictionnaire
 		InsertFenCaracteristiques($dictionary, $fenAdress)
 		; Rappel de la fonction avec la nouvelle fenêtre
-		TransMoins($fenAdress)
+		$transpMin == True ? TransMoins($fenAdress, True) : TransMoins($fenAdress)
 	EndIf
 EndFunc
 
@@ -104,19 +121,41 @@ EndFunc
 Permet d'ancrer / désancrer la fenêtre active au premier plan
 #comments-end
 Func WindowFirstPlan()
-	; Récupération fenêtre active
-	$fenActive = WinGetTitle("[ACTIVE]")
-	; Si la fenêtre n'est pas ancrêe, on l'ancre
-	If(Not $ancre) Then
-		WinSetState($fenActive, "", @SW_SHOW)
-		MsgBox($MB_OK + $MB_ICONWARNING, "Ancrage", "La fen�tre est ancr�e au premier-plan")
-		WinSetOnTop($fenActive, "", $WINDOWS_ONTOP)
-		$ancre = True
+	$fenAdress = WinGetHandle(WinGetTitle("[ACTIVE]"))
+	; Si la fenêtre est déjà référencée dans le dictionnaire, on traite $ancre
+	If(FenIsExist($dictionary, $fenAdress) == True) Then
+		; Vérification si la fenêtre n'est pas déjà ancrée
+		$ancre = GetFenCaracteristiques($dictionary, $fenAdress, "_ancre")
+		ConsoleWrite("Statut de l'ancre pour la fenêtre " & String($fenAdress) & " --> " & $ancre & @CRLF)
+		; Si $ancre = False
+		If(Not $ancre) Then
+			WinSetState($fenAdress, "", @SW_SHOW)
+			WinSetOnTop($fenAdress, "", $WINDOWS_ONTOP)
+			If @error Then
+				MsgBox($MB_OK + $MB_ICONERROR, "Ancrage", "Une erreur est survenue lors de l'ancrage")
+			Else
+				MsgBox($MB_OK + $MB_ICONINFORMATION, "Ancrage", "La fenêtre " & WinGetTitle($fenAdress) & " est ancrée au premier-plan")
+				$ancre = True
+				; Mise à jour du dictionnaire
+				SetFenCaracteristiques($dictionary, $fenAdress, Null, $ancre, "_ancre")
+			EndIf
 		; Sinon, on supprime l'ancre pour pouvoir mettre d'autres fen�tres en premier plan
+		Else
+			WinSetOnTop($fenAdress, "", $WINDOWS_NOONTOP)
+			If @error Then
+				MsgBox($MB_OK + $MB_ICONERROR, "Dé-ancrage", "Une erreur est survenue lors de la suppression de l'ancrage")
+			Else
+				MsgBox($MB_OK + $MB_ICONWARNING, "Ancrage", "La fenêtre " & WinGetTitle($fenAdress) & " est désancrée du premier-plan")
+				$ancre = False
+				; Mise à jour du dictionnaire
+				SetFenCaracteristiques($dictionary, $fenAdress, Null, $ancre, "_ancre")
+			EndIf
+		EndIf
 	Else
-		WinSetOnTop($fenActive, "", $WINDOWS_NOONTOP)
-		MsgBox($MB_OK + $MB_ICONWARNING, "Ancrage", "La fen�tre est d�sancr�e du premier-plan")
-		$ancre = False
+		; La fenêtre n'existe pas, on l'ajoute dans le dictionnaire
+		InsertFenCaracteristiques($dictionary, $fenAdress)
+		; On rappel la fonction
+		WindowFirstPlan()
 	EndIf
 EndFunc
 
@@ -138,7 +177,7 @@ Obtient la valeur de la transparence / ancre de la fenêtre si elle est présent
 #comments-end
 Func GetFenCaracteristiques(ByRef $dictionary, ByRef $sStringAdressFen, $data = Null)
 	If($data == Null) Then
-		MsgBox($MB_ICONERROR + $MB_OK, "Erreur paramètre(s) incorrecte(s)", "Merci de préciser la donnée à récupérer !" & @CRLF & _
+		ConsoleWriteError("Erreur paramètre(s) incorrecte(s)" & @CRLF & "Merci de préciser la donnée à récupérer !" & @CRLF & _
 		"Usage : GetFenCaracteristiques(dictionary, adresseFen, (_transparence | _ancre))")
 	Else
 		For $item In $dictionary
@@ -162,31 +201,33 @@ Func SetFenCaracteristiques(ByRef $dictionary, ByRef $sStringAdressFen, $transpa
 		"Usage : SetFenCaracteristiques(dictionary, adresseFen, transparence, ancre, (_transparence | _ancre))")
 	Else
 		; $data = (_transparence | _ancre)
-		Switch $data
-			; Mise à jour de la transparence
-			Case "_transparence"
-				Dim $values = $dictionary.Item(String($sStringAdressFen))
-				For $i = 0 To UBound($values) - 1
-					For $j = 0 To UBound($values, 2) - 1
-						If($j == 0) Then
-							$values[$i][$j] = $transparence
-						EndIf
-					Next
-				Next
-				$dictionary.Item(String($sStringAdressFen)) = $values
-				; @error <--> succès ou non de la dernière instruction
-				If @error Then
-					MsgBox($MB_ICONERROR + $MB_OK, "Erreur Update Transparence", "Une erreur est survenue dans la modification de la transparence")
-				Else
-					MsgBox($MB_ICONINFORMATION + $MB_OK, "Succès modification transparence", "Modification de transparence effectuée ! " & @CRLF & _
-					"Valeur de transparence pour la fenêtre " & WinGetTitle($sStringAdressFen) & " : " & _
-					$dictionary.Item(String($sStringAdressFen))[0][0], 3)
-					; Focus remis sur la fenêtre active
-					ControlFocus($sStringAdressFen, "", "")
+		Dim $values = $dictionary.Item(String($sStringAdressFen))
+		For $i = 0 To UBound($values) - 1
+			For $j = 0 To UBound($values, 2) - 1
+				If($data == "_transparence") Then
+					If($j == 0) Then
+						$values[$i][$j] = $transparence
+					EndIf
+				ElseIf($data == "_ancre") Then
+					If($j == 1) Then
+						$values[$i][$j] = $ancre
+					EndIf
 				EndIf
-			; Mise à jour de l'ancre
-			Case "_ancre"
-		EndSwitch
+			Next
+		Next
+		$dictionary.Item(String($sStringAdressFen)) = $values
+		; @error <--> succès ou non de la dernière instruction
+		If @error Then
+			MsgBox($MB_ICONERROR + $MB_OK, "Erreur Update", "Une erreur est survenue dans la modification des données")
+		Else
+			MsgBox($MB_ICONINFORMATION + $MB_OK, "Succès modification données", "Modification des données effectuée ! " & @CRLF & _
+			"Valeur des données pour la fenêtre " & WinGetTitle($sStringAdressFen) & " : " & @CRLF & _
+			"Transparence --> " & $dictionary.Item(String($sStringAdressFen))[0][0] & @CRLF & _
+			"Ancre --> " & $dictionary.Item(String($sStringAdressFen))[0][1])
+			; Focus remis sur la fenêtre active
+			ControlFocus($sStringAdressFen, "", "")
+			printDebug()
+		EndIf
 	EndIf
 EndFunc
 
@@ -236,13 +277,14 @@ EndFunc
 Permet l'arrêt du programme et le reset des modifications
 #comments-end
 Func Stop()
-	$response = MsgBox($MB_YESNO + $MB_ICONQUESTION, "Fin du programme", "Quitter ? La transparence sera réinitialisée")
+	$response = MsgBox($MB_YESNO + $MB_ICONQUESTION, "Fin du programme", "Quitter ? La transparence ainsi que l'ancre seront réinitialisés")
 	If $response = $IDYES Then
 		; On parcours toute les fenêtres présentent dans le dictionnaire pour réinitialiser appliquer les valeurs par défaut
 		For $item In $dictionary
 			; Remise de la transparence par défaut
 			WinSetTrans(HWnd($item), '', 255)
-			; TODO Dé-ancrage
+			; Remise de l'ancre par défaut
+			WinSetOnTop(HWnd($item), '', $WINDOWS_NOONTOP)
 		Next
 		Exit
 	Else
